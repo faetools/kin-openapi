@@ -20,7 +20,7 @@ var (
 	// SchemaErrorDetailsDisabled disables printing of details about schema errors.
 	SchemaErrorDetailsDisabled = false
 
-	//SchemaFormatValidationDisabled disables validation of schema type formats.
+	// SchemaFormatValidationDisabled disables validation of schema type formats.
 	SchemaFormatValidationDisabled = false
 
 	errSchema = errors.New("input does not match the schema")
@@ -105,6 +105,7 @@ type Schema struct {
 	Format       string        `json:"format,omitempty" yaml:"format,omitempty"`
 	Description  string        `json:"description,omitempty" yaml:"description,omitempty"`
 	Enum         []interface{} `json:"enum,omitempty" yaml:"enum,omitempty"`
+	EnumNames    []string      `json:"enumNames,omitempty" yaml:"enumNames,omitempty"`
 	Default      interface{}   `json:"default,omitempty" yaml:"default,omitempty"`
 	Example      interface{}   `json:"example,omitempty" yaml:"example,omitempty"`
 	ExternalDocs *ExternalDocs `json:"externalDocs,omitempty" yaml:"externalDocs,omitempty"`
@@ -202,6 +203,8 @@ func (schema Schema) JSONLookup(token string) (interface{}, error) {
 		return schema.Description, nil
 	case "enum":
 		return schema.Enum, nil
+	case "enumNames":
+		return schema.EnumNames, nil
 	case "default":
 		return schema.Default, nil
 	case "example":
@@ -382,6 +385,7 @@ func (schema *Schema) WithMax(value float64) *Schema {
 	schema.Max = &value
 	return schema
 }
+
 func (schema *Schema) WithExclusiveMin(value bool) *Schema {
 	schema.ExclusiveMin = value
 	return schema
@@ -394,6 +398,11 @@ func (schema *Schema) WithExclusiveMax(value bool) *Schema {
 
 func (schema *Schema) WithEnum(values ...interface{}) *Schema {
 	schema.Enum = values
+	return schema
+}
+
+func (schema *Schema) WithEnumNames(values ...string) *Schema {
+	schema.EnumNames = values
 	return schema
 }
 
@@ -535,13 +544,12 @@ func (schema *Schema) WithAdditionalProperties(v *Schema) *Schema {
 
 func (schema *Schema) IsEmpty() bool {
 	if schema.Type != "" || schema.Format != "" || len(schema.Enum) != 0 ||
-		schema.UniqueItems || schema.ExclusiveMin || schema.ExclusiveMax ||
-		schema.Nullable || schema.ReadOnly || schema.WriteOnly || schema.AllowEmptyValue ||
-		schema.Min != nil || schema.Max != nil || schema.MultipleOf != nil ||
-		schema.MinLength != 0 || schema.MaxLength != nil || schema.Pattern != "" ||
-		schema.MinItems != 0 || schema.MaxItems != nil ||
-		len(schema.Required) != 0 ||
-		schema.MinProps != 0 || schema.MaxProps != nil {
+		len(schema.EnumNames) != 0 || schema.UniqueItems || schema.ExclusiveMin ||
+		schema.ExclusiveMax || schema.Nullable || schema.ReadOnly || schema.WriteOnly ||
+		schema.AllowEmptyValue || schema.Min != nil || schema.Max != nil ||
+		schema.MultipleOf != nil || schema.MinLength != 0 || schema.MaxLength != nil ||
+		schema.Pattern != "" || schema.MinItems != 0 || schema.MaxItems != nil ||
+		len(schema.Required) != 0 || schema.MinProps != 0 || schema.MaxProps != nil {
 		return false
 	}
 	if n := schema.Not; n != nil && !n.Value.IsEmpty() {
@@ -811,6 +819,23 @@ func (schema *Schema) visitSetOperations(settings *schemaValidationSettings, val
 			Value:       value,
 			Schema:      schema,
 			SchemaField: "enum",
+			Reason:      "value is not one of the allowed values",
+		}
+	}
+
+	if enumNames := schema.EnumNames; len(enumNames) != 0 {
+		for _, v := range enumNames {
+			if value == v {
+				return
+			}
+		}
+		if settings.failfast {
+			return errSchema
+		}
+		return &SchemaError{
+			Value:       value,
+			Schema:      schema,
+			SchemaField: "enumNames",
 			Reason:      "value is not one of the allowed values",
 		}
 	}
